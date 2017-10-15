@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Feb 10 12:58:21 2017
+
+@author: katiemapes
+"""
+
+"""
+PORTFOLIO OPTIMIZATION CODE
+"""
+
+
+
+
+
+
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy.optimize as spo
+import pandas_datareader.data as web
+
+
+def download_data(symbols,dates):
+    
+    start = dates[0]
+    end = dates[-1]
+    print(start)
+    print(end)
+    if 'SPY' not in symbols:  # add SPY for reference, if absent
+        symbols.insert(0, 'SPY')
+    for symbol in symbols:
+        sym_temp = web.DataReader(symbol, "google",start,end)
+        sym_temp.to_csv('/Users/katiemapes/Desktop/Travyn Projects/Machine Learning for Finance/Projects and Lessons/Lesson 0101/data/'+symbol+'.csv',mode = 'w+')
+    return
+
+
+def symbol_to_path(symbol, base_dir="data"):
+    """Return CSV file path given ticker symbol."""
+    return os.path.join(base_dir, "{}.csv".format(str(symbol)))
+
+
+def get_data(symbols, dates):
+    """Read stock data (adjusted close) for given symbols from CSV files."""
+    df = pd.DataFrame(index=dates)
+    if 'SPY' not in symbols:  # add SPY for reference, if absent
+        symbols.insert(0, 'SPY')
+
+    for symbol in symbols:
+        df_temp = pd.read_csv(symbol_to_path(symbol), index_col='Date',
+                parse_dates=True, usecols=['Date', 'Adj Close'], na_values=['nan'])
+        df_temp = df_temp.rename(columns={'Adj Close': symbol})
+        df = df.join(df_temp)
+        if symbol == 'SPY':  # drop dates SPY did not trade
+            df = df.dropna(subset=["SPY"])
+        
+        #fill missing data forward first, back lastly
+        df.fillna(method="ffill",inplace="True")
+        df.fillna(method="bfill",inplace="True")
+
+    return df
+
+def normalize_data(df):
+    return df/df.ix[0,:]  #normalizes data for plotting    
+    
+def alloc_cons(allocs):
+    total = 1.0 - np.sum(abs(allocs))
+    
+    return total
+    
+    
+def optimize_portfolio(dates,symbols):
+    df = get_data(symbols, dates)
+    alloc_g = np.full(len(symbols),(1/len(symbols)))
+    df_normal = normalize_data(df)
+    
+    
+
+    
+    bnds = tuple((0,1.0) for x in range(len(alloc_g))) 
+    cons = ({'type': 'eq', 'fun': alloc_cons})
+    
+    opt_port = spo.minimize(portfolio_sharpe, alloc_g, args = (df_normal,), method = 'SLSQP', bounds = bnds, constraints = cons, options = {'disp':True})
+
+    port_daily_ret, daily_port_val = portfolio_daily_returns(df_normal, opt_port.x)
+    port_cum_ret = portfolio_cum_returns(daily_port_val)
+    
+
+    
+    return opt_port.x, port_cum_ret, port_daily_ret.mean(), port_daily_ret.std(), opt_port.fun
+   
+    
+    
+def portfolio_sharpe(alloc_g,df):
+    
+    
+    daily_ret, daily_val = portfolio_daily_returns(df,alloc_g)
+    rfr = 0.0
+    sharpe = -1.0 * ((daily_ret-rfr).mean())/(daily_ret.std()) * (252**.5)
+    
+    
+    return sharpe
+    
+def portfolio_daily_returns(df,alloc):
+    
+    #Calculate Daily Portfolio Value based on allocations and positions and Initial Investment Value
+    inv = 6000 #initial investment
+    alloced = df * alloc
+    daily_posit_val =  alloced * inv
+    daily_port_val = daily_posit_val.sum(axis=1)
+
+    #Calculate Daily Portfolio returns based on positions
+    port_daily_ret = (daily_port_val/daily_port_val.shift(1)) - 1.0
+    port_daily_ret = port_daily_ret[1:]
+
+    #print(daily_port_val[1])
+
+    return port_daily_ret, daily_port_val
+    
+    
+def portfolio_cum_returns(daily_port_val):
+    
+    #Calculate Portfolio Cumulative Returns
+    port_cum_ret = (daily_port_val[-1] / daily_port_val[0]) - 1.0
+    plot_gen(daily_port_val, title = "Portfolio Value")
+    return port_cum_ret
+    
+def plot_gen(df, title = "Stock Prices"):
+    
+    """Plot stock prices with a custom title and meaningful axis labels."""
+    ax = df.plot(title=title, fontsize=12)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Price")
+    ax.legend(loc = 'upper left')
+    plt.show()
+    return
+   
+
+def test_run():
+
+    dates = pd.date_range('2017-04-01', '2017-06-28')
+    symbols = ['OA','AJRD']
+    print(symbols) 
+    #download_data(symbols,dates)
+    
+    
+    allocation, cum_return, avg_daily_ret, std_daily_ret, portfolio_sharpe = optimize_portfolio(dates,symbols)
+
+    print("Portfolio Cumulative Return Percentage: ", cum_return)
+    print("Portfolio Sharpe Ratio: ", -1.0* portfolio_sharpe)
+    allocation = pd.DataFrame(np.round(allocation, decimals = 5), index = [symbols], columns = ["Optimal Portfolio Allocation"])
+    print(allocation)
+
+    
+if __name__ == "__main__":
+    test_run()
