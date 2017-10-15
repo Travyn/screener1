@@ -1,0 +1,389 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Jan 31 16:12:31 2017
+
+@author: katiemapes
+"""
+
+"""Bollinger Bands."""
+
+
+
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy.optimize as spo
+
+def symbol_to_path(symbol, base_dir="data"):
+    """Return CSV file path given ticker symbol."""
+    return os.path.join(base_dir, "{}.csv".format(str(symbol)))
+
+
+def get_data(symbols, dates):
+    """Read stock data (adjusted close) for given symbols from CSV files."""
+    df = pd.DataFrame(index=dates)
+    if 'SPY' not in symbols:  # add SPY for reference, if absent
+        symbols.insert(0, 'SPY')
+
+    for symbol in symbols:
+        df_temp = pd.read_csv(symbol_to_path(symbol), index_col='Date',
+                parse_dates=True, usecols=['Date', 'Adj Close'], na_values=['nan'])
+        df_temp = df_temp.rename(columns={'Adj Close': symbol})
+        df = df.join(df_temp)
+        if symbol == 'SPY':  # drop dates SPY did not trade
+            df = df.dropna(subset=["SPY"])
+
+    return df
+
+def normalize_data(df):
+    return df/df.ix[0,:]  #normalizes data for plotting
+
+def plot_daily_returns(df,symbols,mean,std, title="Stock prices"):
+   
+    """Plot stock prices with a custom title and meaningful axis labels."""
+    for symbol in symbols:
+        
+        #Plot time series of daily returns
+        ax = df[symbol].plot(title=title+" "+symbol, fontsize=12)
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Price")
+        plt.show()
+
+        
+        #Plot Histogram of Daily Returns
+        df[symbol].hist(bins=50,label=symbol)
+        plt.axvline(-std[symbol],color='r',linestyle='dashed',linewidth=2)    
+        plt.axvline(std[symbol],color='r',linestyle='dashed',linewidth=2)
+        plt.axvline(mean[symbol],color='w',linestyle='dashed',linewidth=2)
+        plt.show()
+        print("Mean =",mean[symbol])
+        print("STD Dev. =", std[symbol])
+        print ("Kurtosis = ",df[symbol].kurtosis())
+        print()
+        print()
+    return
+    
+    
+def plot_prices(df,symbols, title= "Stock Prices"):
+    
+    for symbol in symbols:
+    
+        # 1. Compute rolling mean
+        rm = get_rolling_mean(df[symbol], window=20)
+
+        # 2. Compute rolling standard deviation
+        rstd = get_rolling_std(df[symbol], window=20)
+
+        # 3. Compute upper and lower bands
+        upper_band, lower_band = get_bollinger_bands(rm, rstd)
+        
+    
+        # Plot raw SPY values, rolling mean and Bollinger Bands
+        ax = df[symbol].plot(title="Bollinger Bands "+symbol, label=symbol)
+        rm.plot(label='Rolling mean', ax=ax)
+        upper_band.plot(label='upper band', ax=ax)
+        lower_band.plot(label='lower band', ax=ax)
+
+        # Add axis labels and legend
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Price")
+        ax.legend(loc='upper left')
+        plt.show() 
+    return
+
+def scatterplot_returns(df,symbols, title="Stock Prices"):
+    corrl = (df.corr(method='pearson'))
+    for symbol in symbols:
+        if symbol == 'SPY':
+             continue
+        df.plot(kind='scatter',x='SPY',y=symbol)
+        beta, alpha = np.polyfit(df['SPY'],df[symbol],1)
+        print(symbol,"  Beta = ",beta,"Alpha = ",alpha)
+        plt.plot(df['SPY'], beta*df['SPY'] + alpha, '-', color = 'r')
+        plt.show()
+        print ("Correlation to Market Index, SPY = ",corrl.get_value('SPY',symbol))
+    return 
+    
+def plot_gen(df, title = "Stock Prices"):
+    
+    """Plot stock prices with a custom title and meaningful axis labels."""
+    ax = df.plot(title=title, fontsize=12)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Price")
+    ax.legend(loc = 'upper left')
+    plt.show()
+    return
+    
+
+def get_rolling_mean(values, window):
+    """Return rolling mean of given values, using specified window size."""
+    return pd.Series.rolling(values, window=window).mean()
+
+
+def get_rolling_std(values, window):
+    """Return rolling standard deviation of given values, using specified window size."""
+    return pd.Series.rolling(values, window=window).std()
+    
+
+
+
+
+def get_bollinger_bands(rm, rstd):
+    """Return upper and lower Bollinger Bands."""
+    upper_band = rm + 2*rstd
+    lower_band = rm - 2*rstd
+    return upper_band, lower_band
+
+def compute_daily_returns(df):
+    daily_returns = (df/df.shift(1)) - 1.0
+    daily_returns.ix[0,:]  = 0
+    
+    #Compute Mean and STD Dev of Daily Returns
+    DR_mean = daily_returns.mean()
+    DR_SD = daily_returns.std()
+
+
+    return daily_returns,DR_mean,DR_SD
+    
+def calc_portfolio(inv,allc,df):
+    
+    #Calculate Position and Portfolio Values
+    alloced = df * allc
+    daily_posit_val =  alloced * inv
+    daily_port_val = daily_posit_val.sum(axis=1)
+
+    #Calculate Daily, Cumulative returns, daily mean/std, and Sharpe Ratio
+    port_daily_ret = (daily_port_val/daily_port_val.shift(1)) - 1.0
+    port_daily_ret = port_daily_ret[1:]
+    port_cum_ret = (daily_port_val[-1] / daily_port_val[0]) - 1.0
+
+    avg_daily_ret = port_daily_ret.mean()
+    std_daily_ret = port_daily_ret.std()
+    
+    sharpe = (252**.5) * (avg_daily_ret/std_daily_ret) #Sharpe calculated with 0% risk-free return, and daily sampling for k = 252
+
+    plot_gen(port_daily_ret, title = "Portfolio Daily Returns")
+    port_daily_ret.hist(bins=50)
+    plt.axvline(-std_daily_ret,color='r',linestyle='dashed',linewidth=2)    
+    plt.axvline(std_daily_ret,color='r',linestyle='dashed',linewidth=2)
+    plt.axvline(avg_daily_ret,color='w',linestyle='dashed',linewidth=2)
+    plt.show()
+    print("Mean =",avg_daily_ret)
+    print("STD Dev. =", std_daily_ret)
+    print ("Kurtosis = ",port_daily_ret.kurtosis())
+    print()
+    print("Portfolio Sharpe Ratio = ",sharpe)
+    plot_gen(daily_port_val, title = "Portfolio Value")
+    print("Cumulative Return on Portfolio = ",port_cum_ret)
+    plot_gen(daily_posit_val, title = "Position Values")
+    
+    
+    return
+
+def compute_cumulative_returns(df): 
+    cumulative_returns = df.copy()
+    cumulative_returns[1:] = (df[1:] / df.ix[0,:]) - 1.0
+    cumulative_returns.ix[0,:] = 0
+    return cumulative_returns
+    
+def f(x):
+    y = (x-1.5)**2 - 2.5*x +4 
+    #print ("X = {}, Y = {}".format(x,y))
+    return y
+    
+
+    
+def error(line,data):
+    """
+    Line : Line is the parameters (C0, C1) where C0 is the slope of a line and C1 is the y-intercept
+    data : Data is a 2D array where each row of the array is a point (x,y)
+    
+    Return the error as a single real value
+    """
+    
+    err = np.sum((data[:,1] - (line[0] * data[:, 0] + line[1])) ** 2)
+    return err
+    
+def fit_line(data, error_func):
+    """
+    Fit a line to given data, using supplied error function
+    
+    Parameters:
+        
+    Data: 2D array where each row is a point (x, y)
+    error_func: funciton that computes the error between a line and observed data
+    
+    return line that minimizes error
+    """
+    
+    #Generate initial guess
+    l = np.float32([0, np.mean(data[:,1])]) #Slope = 0, intercept = mean (y values)
+    
+    #Plot initial guess
+    x_ends = np.float32([-5,5])
+    plt.plot(x_ends, l[0] * x_ends + l[1], 'm--', linewidth = 2.0, label = "Initial Guess")
+    plt.legend(loc='upper left')
+    
+    #Call optimizer to minimize error funciton
+    result = spo.minimize(error_func, l, args = (data,), method = 'SLSQP', options = {'disp':True})
+    
+    return result.x
+    
+def error_poly(C,data):
+    """
+    Compute error between polynomial and observed data
+    
+    C: numpy.poly1D object or array representing polynomial coefficients
+    data: 2D array where each row is a point
+    
+    Return error as a single real value
+    """
+    
+    #Metric: Sum of squared Y-axis differences
+    err = np.sum((data[:,1] - np.polyval(C, data[:,0])) ** 2)
+    return err
+    
+def fit_poly(data, error_func, degree = 3):
+    """
+    Fit a polynomial to the given data using supplied error function.
+    """
+    # Generate an initial guess for the polynomial model (all C = 1)
+    Cguess = np.poly1d(np.ones(degree+1,dtype = np.float32))
+    
+    #Plot initial guess
+    x = np.linspace(-10,10,51)
+    plt.plot(x, np.polyval(Cguess, x), 'm--', linewidth = 2.0, label = "Initial Guess")
+    
+    #Call optimizer to minimize error function
+    result = spo.minimize(error_func, Cguess, args = (data,), method = 'SLSQP')
+    return np.poly1d(result.x) 
+
+
+def test_run():
+    
+    
+    
+    
+    # Read data
+    dates = pd.date_range('2016-03-27', '2017-03-27')
+    symbols = ['AJRD','OA','ORAN','VZ','NVDA']
+    
+    
+    df = get_data(symbols, dates)
+    
+    
+    #fill missing data forward first, back lastly
+    df.fillna(method="ffill",inplace="True")
+    df.fillna(method="bfill",inplace="True")
+    
+    #Normalize Data
+    df_normal = normalize_data(df)
+
+    #Plot Each Ticker with Rolling Mean and Bollinger Bands
+    plot_prices(df,symbols, title="Stock Prices")
+
+    # Compute and Plot daily returns
+    daily_returns,DR_mean,DR_SD = compute_daily_returns(df)
+    plot_daily_returns(daily_returns, symbols,DR_mean,DR_SD, title="Daily returns")
+    
+    #Plot ScatterPlot of Daily Returns and print correlation values for each
+    scatterplot_returns(daily_returns,symbols,title="Daily Returns vs. SPY")
+    
+    # Compute cumulative returns
+    cumulative_returns = compute_cumulative_returns(df)
+    plot_gen(cumulative_returns, title="Cumulative returns")
+    
+    #Calculate Portfolio Value Based on Theoretical Allocation % at Start Date
+    init_inv = 10000.00
+    degree = len(symbols)
+    alloc = np.full(degree,(1/degree))
+    calc_portfolio(init_inv,alloc,df_normal)
+    
+    #Calculate optimal portfolio allocations based on initial guess
+    
+
+    
+    
+
+   
+    """
+    #Run minimization function example
+    x_g = 3.5
+    min = spo.minimize(f, x_g, method = 'SLSQP', options = {'disp':True})
+    print ("Minima found at:")
+    print ("X = {}, Y = {}".format(min.x, min.fun))
+    
+    
+    #Plot function values with minima Marked
+    Xplot = np.linspace(-50,50,200)
+    Yplot = f(Xplot)
+    plt.plot(Xplot, Yplot)
+    plt.plot(min.x, min.fun, 'ro')
+    plt.title("Minima of an objective function")
+    plt.show()
+    
+
+    
+    #Define original line (control)
+    l_orig = np.float32([4,2])
+    print ("Original Line: C0 = {}, C1 = {}".format(l_orig[0], l_orig[1]))
+    xorig = np.linspace(-10,10,101)
+    yorig = l_orig[0] * xorig + l_orig[1]
+    plt.plot(xorig, yorig, 'b', linewidth = 2.0, label = "Original Line")
+    
+    #Generate random noise data points
+    noise_sig = 3.0
+    noise = np.random.normal(0,noise_sig, yorig.shape)
+    data = np.asarray([xorig,yorig + noise]).T
+    plt.plot(data[:,0],data[:,1], 'go', label = "Data Points")
+
+    #Try to determine control line
+    l_fit = fit_line(data, error)
+    print ("Optimized Line: C0 = {}, C1 = {}".format(l_fit[0], l_fit[1]))
+
+    
+    #Plot Resulting line
+    plt.plot(xorig, l_fit[0] * xorig + l_fit[1], 'r--', linewidth = 2.0, label = "Optimized Fit")
+
+
+    
+    #Define original line (control)
+    p_c = [1.5,-10,-5,60,50]
+    p_orig = np.poly1d(p_c)
+    degree =  len(p_c)  - 1
+    print ("Original Polynomial: ")
+    print(p_orig)
+    xorig = np.linspace(-10,10,101)
+    yorig = p_orig(xorig[0:])
+    plt.plot(xorig, yorig, 'b', linewidth = 2.0, label = "Original Polynomial")
+
+    
+    #Generate random noise data points
+    noise_sig = 1000.0
+    noise = np.random.normal(0,noise_sig, yorig.shape)
+    data = np.asarray([xorig,yorig + noise]).T
+    plt.plot(data[:,0],data[:,1], 'go', label = "Data Points")
+    
+    #Determine best fit line
+    p_fit = fit_poly(data, error_poly, degree = degree)
+    print ("Optimized Polynomial: ")
+    print (p_fit)
+    
+    #Plot optimized line
+    plt.plot(xorig, yorig, 'r', linewidth = 2.0, label = "Optimized Polynomial")
+    plt.legend(loc ='upper left')
+    """
+    
+
+    
+    
+
+    
+    
+
+   
+    
+if __name__ == "__main__":
+    test_run()
