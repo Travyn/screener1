@@ -4,6 +4,10 @@
 %Prediction algorithm. Inputs are as follows:
 
 %{
+
+% Do you want me to make different functions rather than having V1 - V4? Isn't everything the same except
+%  for the nearest neighbor stuff?
+
 V1_4 Chooses the actual closest neighbors, as opposed to sorting the
 neigbors by descending index value. Also allows you to choose the number of
 neighbors as an input to the program.
