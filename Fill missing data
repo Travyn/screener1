@@ -8,7 +8,7 @@ Created on Tue Jan 31 16:12:31 2017
 
 """Bollinger Bands."""
 
-
+# This is actually really nicely writen.
 
 import os
 import pandas as pd
