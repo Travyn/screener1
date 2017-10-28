@@ -1,4 +1,6 @@
 
+% File input is of format {col1, col2, col3, ...}
+% Why not use a least-squares regression? Either A\b or fit (https://www.mathworks.com/help/curvefit/least-squares-fitting.html)
 
 
 clear all
@@ -24,7 +26,8 @@ for i = 1:b
         q = a(j,:);
         r = c(k,:);
         end
-
+        
+        % Is this just your residual?
         ans2(j) = sqrt((a(j,1)/q(1)-c(k,1)/r(1))^2 + (a(j,2)/q(2)-c(k,2)/r(2))^2); %determines euclidian distance for each (p,v) point in the subject array and stores it in ans(2)
     end
     ans1(i,1) = mean(ans2);    
