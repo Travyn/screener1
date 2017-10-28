@@ -1,27 +1,27 @@
 
 
 
-%Prediction algorithm. Inputs are as follows:
-
+% Prediction algorithm. Inputs are as follows:
+%
 %{
-data = historical data for the equity, ending on current day.
-prediction_window = lookahead window, in days.
-lookback = desired lookback time for matching.
-f = for test purposes, the future of a given equity, beginning at the end
-of the array a.
-
-
-
-Output:
-Prediction = [m, b]; linear prediction for prediction window. 
-predicted_price = predicted price at end of prediction window.
-percent_increase = percent increase across prediction window. 
- 
-
-Known Constraints:
-
-Lookback window >= 2*prediction window
-
+% data = historical data for the equity, ending on current day.
+% prediction_window = lookahead window, in days.
+% lookback = desired lookback time for matching.
+% f = for test purposes, the future of a given equity, beginning at the end
+% of the array a.
+%
+%
+%
+% Output:
+% Prediction = [m, b]; linear prediction for prediction window. 
+% predicted_price = predicted price at end of prediction window.
+% percent_increase = percent increase across prediction window. 
+% 
+%
+% Known Constraints:
+%
+% Lookback window >= 2*prediction window
+%
 %}
 
 
@@ -56,7 +56,8 @@ for i = 1:b
         r = c(k);
 
         end
-
+        
+        % why not just use dist()?
         ans2(j) = sqrt((a(j)/q(1)-c(k)/r(1))^2); %determines euclidian distance for each (p,v) point in the subject array and stores it in ans(2)
     end
     ans1(i) = mean(ans2);    
